@@ -1,313 +1,295 @@
 import { supabase } from '@/integrations/supabase/client'
+import { PostgrestError } from '@supabase/supabase-js'
 
-// Define types manually until the auto-generated types are updated
-type Project = {
+// --- Type Definitions ---
+
+// Define placeholder types for related data for better type safety.
+type Task = { id: string; name: string; project_id: string; [key: string]: any };
+type CustomField = { id: string; name: string; value: any; project_id: string };
+type ActivityLog = { [key: string]: any };
+
+// Base project structure using consistent snake_case naming.
+type ProjectBase = {
   id: string
   name: string
   description?: string
   status: 'active' | 'completed' | 'archived'
-  created_date: string
+  created_at: string
   last_modified: string
   created_by: string
   team_members: string[]
 }
 
-type ProjectInsert = Omit<Project, 'id' | 'created_date' | 'last_modified' | 'created_by'>
-type ProjectUpdate = Partial<Omit<Project, 'id' | 'created_date' | 'created_by'>>
+// Type for project lists, where related tables are aggregated (e.g., as a count).
+// This prevents runtime errors from expecting an array where an object is returned.
+export type ProjectSummary = ProjectBase & {
+  tasks: { count: number }[] // Supabase returns count as an array with one object
+  custom_fields: CustomField[]
+}
 
-// LocalStorage key for demo projects
+// Type for a single, detailed project view with full related data.
+export type ProjectDetail = ProjectBase & {
+  tasks: Task[]
+  custom_fields: CustomField[]
+}
+
+// Type for creating a new project.
+export type ProjectInsert = Omit<ProjectDetail, 'id' | 'created_at' | 'last_modified' | 'created_by'>;
+
+// Type for updating a project.
+export type ProjectUpdate = Partial<Omit<ProjectDetail, 'id' | 'created_at' | 'created_by'>>;
+
+// --- LocalStorage Management for Demo Mode ---
+
 const DEMO_PROJECTS_KEY = 'lovable-demo-projects';
+const DEMO_ACTIVITY_LOG_KEY = 'lovable-demo-activity-log';
 
-// Helper functions for localStorage persistence
-const loadDemoProjects = (): any[] => {
-  if (typeof window === 'undefined') return [];
+// Correctly handles loading/saving for both projects and the activity log.
+const loadFromLocalStorage = <T>(key: string, defaultValue: T): T => {
+  if (typeof window === 'undefined') return defaultValue;
   try {
-    const stored = localStorage.getItem(DEMO_PROJECTS_KEY);
-    return stored ? JSON.parse(stored) : [];
+    const stored = localStorage.getItem(key);
+    return stored ? JSON.parse(stored) : defaultValue;
   } catch (error) {
-    console.warn('Failed to load demo projects from localStorage:', error);
-    return [];
+    console.warn(`Failed to load '${key}' from localStorage:`, error);
+    return defaultValue;
   }
 };
 
-const saveDemoProjects = (projects: any[]): void => {
+const saveToLocalStorage = <T>(key: string, data: T): void => {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(DEMO_PROJECTS_KEY, JSON.stringify(projects));
+    localStorage.setItem(key, JSON.stringify(data));
   } catch (error) {
-    console.warn('Failed to save demo projects to localStorage:', error);
+    console.warn(`Failed to save '${key}' to localStorage:`, error);
   }
 };
 
-// In-memory storage for demo projects when Supabase is not configured
-let demoProjects: any[] = loadDemoProjects();
+// --- In-Memory State for Demo Mode ---
+
+let demoProjects: ProjectDetail[] = loadFromLocalStorage(DEMO_PROJECTS_KEY, []);
+let demoActivityLog: ActivityLog[] = loadFromLocalStorage(DEMO_ACTIVITY_LOG_KEY, []);
+
+// Simple UUID generator for robust demo data IDs.
+const generateUUID = () => crypto.randomUUID();
+
+/**
+ * Service class for all project-related data operations.
+ * Provides a fallback to a demo mode using localStorage when Supabase is not configured.
+ */
 export class ProjectService {
-  // Get all projects for the current user
-  static async getUserProjects() {
+  /**
+   * Initializes sample data if in demo mode and no projects exist.
+   * This should be called once when the application loads.
+   */
+  static initializeDemoData(): void {
+    if (!supabase && demoProjects.length === 0) {
+      const demoId = '1';
+      demoProjects = [{
+        id: demoId,
+        name: 'Sample Project',
+        description: 'This is a sample project. Connect Supabase to store real data.',
+        status: 'active',
+        created_at: new Date('2024-01-01').toISOString(),
+        last_modified: new Date().toISOString(),
+        created_by: 'demo_user',
+        team_members: ['Demo User'],
+        tasks: [],
+        custom_fields: [],
+      }];
+      demoActivityLog = [{
+          id: generateUUID(),
+          project_id: demoId,
+          user_id: 'demo_user',
+          action: 'project_created',
+          changes: { project_name: 'Sample Project' },
+          created_at: new Date().toISOString(),
+      }];
+      saveToLocalStorage(DEMO_PROJECTS_KEY, demoProjects);
+      saveToLocalStorage(DEMO_ACTIVITY_LOG_KEY, demoActivityLog);
+    }
+  }
+
+  static async getUserProjects(): Promise<ProjectSummary[]> {
     if (!supabase) {
-      // Initialize with sample data if empty
-      if (demoProjects.length === 0) {
-        demoProjects = [
-          {
-            id: '1',
-            name: 'Sample Project',
-            description: 'This is a sample project. Connect Supabase to store real data.',
-            status: 'active' as const,
-            createdDate: new Date('2024-01-01'),
-            lastModified: new Date(),
-            teamMembers: ['Demo User']
-          }
-        ];
-        saveDemoProjects(demoProjects);
-      }
-      return demoProjects;
+        // In demo mode, we need to manually construct the summary view (e.g., task count).
+        const summaries: ProjectSummary[] = demoProjects.map(p => ({
+            ...p,
+            tasks: [{ count: p.tasks.length }], // Mimic Supabase count structure
+        }));
+        return summaries;
     }
 
     const { data, error } = await supabase
       .from('projects')
-      .select(`
-        *,
-        tasks(count),
-        custom_fields(*)
-      `)
-      .order('last_modified', { ascending: false })
+      .select('*, tasks(count), custom_fields(*)')
+      .order('last_modified', { ascending: false });
 
-    if (error) throw error
-    return data
+    if (error) throw error;
+    return (data as ProjectSummary[]) || [];
   }
 
-  // Get a specific project by ID
-  static async getProject(id: string) {
+  static async getProject(id: string): Promise<ProjectDetail | null> {
     if (!supabase) {
-      // Look for project in demo storage
-      let project = demoProjects.find(p => p.id === id);
-      
-      if (!project) {
-        // If not found and it's the sample project ID, create it
-        if (id === '1') {
-          project = {
-            id: '1',
-            name: 'Sample Software Project',
-            description: 'A comprehensive software development project with multiple phases',
-            createdDate: new Date('2024-01-01'),
-            lastModified: new Date(),
-            status: 'active' as const,
-            customFields: [
-              {
-                id: 'cf1',
-                name: 'Priority',
-                type: 'select' as const,
-                required: true,
-                options: ['Low', 'Medium', 'High', 'Critical']
-              }
-            ],
-            teamMembers: ['Sarah Johnson', 'Alex Chen'],
-            tasks: [
-              {
-                id: '1',
-                name: 'Project Planning & Requirements',
-                description: 'Define project scope and gather requirements',
-                type: 'task' as const,
-                status: 'completed' as const,
-                startDate: new Date('2024-01-01'),
-                endDate: new Date('2024-01-07'),
-                dependencies: [],
-                assignee: 'Sarah Johnson',
-                progress: 100,
-                customFields: { 'cf1': 'High' }
-              }
-            ]
-          };
-          demoProjects.push(project);
-          saveDemoProjects(demoProjects);
-        }
-      }
-      
+      const project = demoProjects.find(p => p.id === id);
       return project || null;
     }
 
     const { data, error } = await supabase
       .from('projects')
-      .select(`
-        *,
-        tasks(*),
-        custom_fields(*)
-      `)
+      .select('*, tasks(*), custom_fields(*)')
       .eq('id', id)
-      .single()
+      .single();
 
-    if (error) throw error
-    return data
+    if (error) {
+      if ((error as PostgrestError).code === 'PGRST116') return null; // Handle not found gracefully
+      throw error;
+    }
+    return data as ProjectDetail;
   }
 
-  // Create a new project
-  static async createProject(project: ProjectInsert) {
+  static async createProject(project: ProjectInsert): Promise<ProjectDetail> {
     if (!supabase) {
-      // Create mock project and add to demo storage
-      const mockProject = {
-        id: Date.now().toString(),
-        name: project.name,
+      const newProject: ProjectDetail = {
+        id: generateUUID(),
+        ...project,
         description: project.description || '',
-        status: project.status || 'active' as const,
-        createdDate: new Date(),
-        lastModified: new Date(),
-        teamMembers: project.team_members || [],
+        status: project.status || 'active',
+        team_members: project.team_members || [],
+        created_at: new Date().toISOString(),
+        last_modified: new Date().toISOString(),
+        created_by: 'demo_user',
         tasks: [],
-        customFields: []
+        custom_fields: []
       };
       
-      // Add to demo storage and persist
-      demoProjects.push(mockProject);
-      saveDemoProjects(demoProjects);
+      demoProjects.push(newProject);
+      saveToLocalStorage(DEMO_PROJECTS_KEY, demoProjects);
       
-      return mockProject;
+      this.logActivity(newProject.id, 'demo_user', 'project_created', { project_name: newProject.name });
+      return newProject;
     }
 
-    // Get current user
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) throw new Error('User not authenticated')
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
 
     const { data, error } = await supabase
       .from('projects')
-      .insert([{
-        ...project,
-        created_by: user.id
-      }])
-      .select()
-      .single()
+      .insert([{ ...project, created_by: user.id }])
+      .select('*, tasks(*), custom_fields(*)')
+      .single();
 
-    if (error) throw error
-
-    // Log activity
-    await this.logActivity(data.id, 'project_created', {
-      project_name: data.name
-    })
-
-    return data
+    if (error) throw error;
+    
+    await this.logActivity(data.id, user.id, 'project_created', { project_name: data.name });
+    return data as ProjectDetail;
   }
 
-  // Update a project
-  static async updateProject(id: string, updates: any) {
+  static async updateProject(id: string, updates: ProjectUpdate): Promise<ProjectDetail> {
+    const last_modified = new Date().toISOString();
+    const finalUpdates = { ...updates, last_modified };
+
     if (!supabase) {
-      // Handle demo mode
       const projectIndex = demoProjects.findIndex(p => p.id === id);
-      if (projectIndex !== -1) {
-        demoProjects[projectIndex] = { 
-          ...demoProjects[projectIndex], 
-          ...updates,
-          lastModified: new Date()
-        };
-        saveDemoProjects(demoProjects);
-        return demoProjects[projectIndex];
-      }
-      throw new Error('Project not found');
+      if (projectIndex === -1) throw new Error('Project not found in demo storage');
+      
+      demoProjects[projectIndex] = { ...demoProjects[projectIndex], ...finalUpdates };
+      saveToLocalStorage(DEMO_PROJECTS_KEY, demoProjects);
+      
+      this.logActivity(id, 'demo_user', 'project_updated', finalUpdates); // Log all changes
+      return demoProjects[projectIndex];
     }
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
+    
     const { data, error } = await supabase
       .from('projects')
-      .update(updates)
+      .update(finalUpdates)
       .eq('id', id)
-      .select()
-      .single()
+      .select('*, tasks(*), custom_fields(*)')
+      .single();
 
-    if (error) throw error
-
-    // Log activity
-    await this.logActivity(id, 'project_updated', updates)
-
-    return data
+    if (error) throw error;
+    
+    await this.logActivity(id, user.id, 'project_updated', finalUpdates);
+    return data as ProjectDetail;
   }
 
-  // Delete a project
-  static async deleteProject(id: string) {
+  static async deleteProject(id: string): Promise<void> {
     if (!supabase) {
-      // Handle demo mode
-      const projectIndex = demoProjects.findIndex(p => p.id === id);
-      if (projectIndex !== -1) {
-        demoProjects.splice(projectIndex, 1);
-        saveDemoProjects(demoProjects);
-        return;
+      const initialLength = demoProjects.length;
+      demoProjects = demoProjects.filter(p => p.id !== id);
+      // Only log and save if an item was actually deleted.
+      if (demoProjects.length < initialLength) {
+          saveToLocalStorage(DEMO_PROJECTS_KEY, demoProjects);
+          this.logActivity(id, 'demo_user', 'project_deleted', { project_id: id });
       }
-      throw new Error('Project not found');
+      return;
     }
 
-    const { error } = await supabase
-      .from('projects')
-      .delete()
-      .eq('id', id)
-
-    if (error) throw error
-
-    // Log activity
-    await this.logActivity(id, 'project_deleted', { project_id: id })
-  }
-
-  // Subscribe to project changes
-  static subscribeToProject(projectId: string, callback: (payload: any) => void) {
-    return supabase
-      .channel(`project_${projectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'projects',
-          filter: `id=eq.${projectId}`
-        },
-        callback
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-          filter: `project_id=eq.${projectId}`
-        },
-        callback
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'custom_fields',
-          filter: `project_id=eq.${projectId}`
-        },
-        callback
-      )
-      .subscribe()
-  }
-
-  // Log activity for audit trail
-  private static async logActivity(projectId: string, action: string, changes?: any, taskId?: string) {
-    if (!supabase) return; // Skip logging when Supabase is not configured
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('User not authenticated');
     
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    if (user) {
-      await supabase
-        .from('activity_log')
-        .insert([{
-          project_id: projectId,
-          task_id: taskId || null,
-          user_id: user.id,
-          action,
-          changes
-        }])
+    const { error } = await supabase.from('projects').delete().eq('id', id);
+    if (error) throw error;
+
+    await this.logActivity(id, user.id, 'project_deleted', { project_id: id });
+  }
+  
+  // Refactored to accept userId, preventing redundant API calls.
+  private static async logActivity(projectId: string, userId: string, action: string, changes?: any, taskId?: string) {
+    if (!supabase) {
+      const logEntry = {
+        id: generateUUID(),
+        project_id: projectId,
+        task_id: taskId || null,
+        user_id: userId, // Always 'demo_user' in this branch
+        action,
+        changes,
+        created_at: new Date().toISOString()
+      };
+      demoActivityLog.unshift(logEntry);
+      saveToLocalStorage(DEMO_ACTIVITY_LOG_KEY, demoActivityLog);
+      return;
     }
+    
+    await supabase.from('activity_log').insert([{
+      project_id: projectId,
+      task_id: taskId || null,
+      user_id: userId,
+      action,
+      changes
+    }]);
   }
 
-  // Get project activity log
-  static async getProjectActivity(projectId: string) {
+  static async getProjectActivity(projectId: string): Promise<ActivityLog[]> {
+    if (!supabase) {
+      return demoActivityLog.filter(log => log.project_id === projectId);
+    }
+
     const { data, error } = await supabase
       .from('activity_log')
       .select('*')
       .eq('project_id', projectId)
       .order('created_at', { ascending: false })
-      .limit(50)
+      .limit(50);
 
-    if (error) throw error
-    return data
+    if (error) throw error;
+    return data || [];
+  }
+
+  static subscribeToProject(projectId: string, callback: (payload: any) => void) {
+    if (!supabase) {
+      console.warn("Demo Mode: Real-time updates are not supported. This is a mock subscription.");
+      return { unsubscribe: () => {} }; // Simplified mock subscription
+    }
+
+    return supabase
+      .channel(`project_${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects', filter: `id=eq.${projectId}` }, callback)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `project_id=eq.${projectId}` }, callback)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'custom_fields', filter: `project_id=eq.${projectId}` }, callback)
+      .subscribe();
   }
 }

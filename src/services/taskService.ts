@@ -6,7 +6,7 @@ type Task = {
   id: string
   project_id: string
   name: string
-  description?: string
+  description?: string | null // Allow null
   task_type: 'task' | 'milestone' | 'deliverable'
   status: 'not-started' | 'in-progress' | 'completed' | 'on-hold' | 'impacted' | 'on-going' | 'dev-in-progress' | 'done'
   start_date: string
@@ -48,7 +48,7 @@ const saveDemoProjects = (projects: any[]): void => {
 
 export class TaskService {
   // Get all tasks for a project
-  static async getProjectTasks(projectId: string) {
+  static async getProjectTasks(projectId: string): Promise<Task[]> {
     if (!supabase) {
       // Load from localStorage demo projects
       const demoProjects = loadDemoProjects();
@@ -67,27 +67,29 @@ export class TaskService {
   }
 
   // Create a new task
-  static async createTask(task: any) {
+  static async createTask(task: Partial<TaskInsert>): Promise<Task> {
     if (!supabase) {
-      // Handle demo mode - ensure proper ID generation
+      // Handle demo mode
       const demoProjects = loadDemoProjects();
       const projectIndex = demoProjects.findIndex(p => p.id === task.project_id);
       
       if (projectIndex !== -1) {
-        const newTask = {
-          id: generateId(true), // Use demo mode ID generation
-          name: task.name,
-          description: task.description || '',
-          type: task.type || task.task_type || 'task',
+        const now = new Date().toISOString();
+        const newTask: Task = {
+          id: generateId(true),
+          project_id: task.project_id!,
+          name: task.name || 'Untitled Task',
+          description: task.description || null, // FIXED: Use null for consistency
+          task_type: task.task_type || 'task',
           status: task.status || 'not-started',
-          startDate: new Date(task.start_date || task.startDate),
-          endDate: new Date(task.end_date || task.endDate),
+          start_date: task.start_date ? new Date(task.start_date).toISOString() : now,
+          end_date: task.end_date ? new Date(task.end_date).toISOString() : now,
           dependencies: task.dependencies || [],
-          assignee: task.assignee || '',
+          assignee: task.assignee || undefined,
           progress: task.progress || 0,
-          customFields: task.custom_fields || task.customFields || {},
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          custom_fields: task.custom_fields || {},
+          created_at: now,
+          updated_at: now
         };
         
         if (!demoProjects[projectIndex].tasks) {
@@ -102,19 +104,19 @@ export class TaskService {
       throw new Error('Project not found');
     }
 
-    // For Supabase mode - let the database generate the UUID automatically
+    // For Supabase mode
     const taskData: TaskInsert = {
-      project_id: task.project_id,
-      name: task.name,
+      project_id: task.project_id!,
+      name: task.name!,
       description: task.description || null,
-      task_type: task.type || task.task_type || 'task',
+      task_type: task.task_type || 'task',
       status: task.status || 'not-started',
-      start_date: task.start_date || task.startDate,
-      end_date: task.end_date || task.endDate,
-      assignee: task.assignee || null,
+      start_date: task.start_date || new Date().toISOString(),
+      end_date: task.end_date || new Date().toISOString(),
+      assignee: task.assignee || undefined,
       progress: task.progress || 0,
       dependencies: task.dependencies || [],
-      custom_fields: task.custom_fields || task.customFields || {}
+      custom_fields: task.custom_fields || {}
     };
 
     const { data, error } = await supabase
@@ -128,29 +130,30 @@ export class TaskService {
       throw error;
     }
 
-    // Log activity
-    await this.logActivity(task.project_id, 'task_created', {
-      task_name: data.name,
-      task_type: data.task_type
-    }, data.id)
-
-    return data
+    await this.logActivity(data.project_id, 'task_created', { task_name: data.name }, data.id);
+    return data;
   }
 
   // Update a task
-  static async updateTask(id: string, updates: any) {
+  // FIXED: Added projectId for efficient searching in demo mode
+  static async updateTask(id: string, projectId: string, updates: TaskUpdate): Promise<Task> {
     if (!supabase) {
       // Handle demo mode
       const demoProjects = loadDemoProjects();
+      const projectIndex = demoProjects.findIndex(p => p.id === projectId);
       
-      for (const project of demoProjects) {
-        if (project.tasks) {
-          const taskIndex = project.tasks.findIndex((t: any) => t.id === id);
-          if (taskIndex !== -1) {
-            project.tasks[taskIndex] = { ...project.tasks[taskIndex], ...updates };
-            saveDemoProjects(demoProjects);
-            return project.tasks[taskIndex];
-          }
+      if (projectIndex !== -1 && demoProjects[projectIndex].tasks) {
+        const taskIndex = demoProjects[projectIndex].tasks.findIndex((t: any) => t.id === id);
+        if (taskIndex !== -1) {
+          // FIXED: Correctly updates timestamp and merges updates
+          const updatedTask = {
+            ...demoProjects[projectIndex].tasks[taskIndex],
+            ...updates,
+            updated_at: new Date().toISOString()
+          };
+          demoProjects[projectIndex].tasks[taskIndex] = updatedTask;
+          saveDemoProjects(demoProjects);
+          return updatedTask;
         }
       }
       throw new Error('Task not found');
@@ -163,25 +166,22 @@ export class TaskService {
       .select()
       .single()
 
-    if (error) throw error
-
-    // Log activity
-    await this.logActivity(data.project_id, 'task_updated', updates, id)
-
-    return data
+    if (error) throw error;
+    await this.logActivity(data.project_id, 'task_updated', updates, id);
+    return data;
   }
 
   // Delete a task
-  static async deleteTask(id: string, projectId: string) {
+  static async deleteTask(id: string, projectId: string): Promise<void> {
     if (!supabase) {
       // Handle demo mode
       const demoProjects = loadDemoProjects();
       const projectIndex = demoProjects.findIndex(p => p.id === projectId);
       
       if (projectIndex !== -1 && demoProjects[projectIndex].tasks) {
-        const taskIndex = demoProjects[projectIndex].tasks.findIndex((t: any) => t.id === id);
-        if (taskIndex !== -1) {
-          demoProjects[projectIndex].tasks.splice(taskIndex, 1);
+        const initialLength = demoProjects[projectIndex].tasks.length;
+        demoProjects[projectIndex].tasks = demoProjects[projectIndex].tasks.filter((t: any) => t.id !== id);
+        if (demoProjects[projectIndex].tasks.length < initialLength) {
           saveDemoProjects(demoProjects);
           return;
         }
@@ -189,59 +189,63 @@ export class TaskService {
       throw new Error('Task not found');
     }
 
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', id)
-
-    if (error) throw error
-
-    // Log activity
-    await this.logActivity(projectId, 'task_deleted', { task_id: id }, id)
+    const { error } = await supabase.from('tasks').delete().eq('id', id);
+    if (error) throw error;
+    await this.logActivity(projectId, 'task_deleted', { task_id: id }, id);
   }
 
   // Update task progress
-  static async updateTaskProgress(id: string, progress: number) {
+  // FIXED: Added projectId and implemented consistent status change logic
+  static async updateTaskProgress(id: string, projectId: string, progress: number): Promise<Task> {
+    let taskToUpdate: Task | undefined;
+    
+    // 1. Find the task and determine the new status
     if (!supabase) {
-      // Handle demo mode - use updateTask method
-      return await this.updateTask(id, { progress });
+      const demoProjects = loadDemoProjects();
+      const project = demoProjects.find(p => p.id === projectId);
+      taskToUpdate = project?.tasks?.find((t: any) => t.id === id);
+    } else {
+      const { data, error } = await supabase.from('tasks').select('*').eq('id', id).single();
+      if (error) throw error;
+      taskToUpdate = data;
     }
 
-    const { data, error } = await supabase
-      .from('tasks')
-      .update({ progress })
-      .eq('id', id)
-      .select()
-      .single()
+    if (!taskToUpdate) throw new Error('Task not found');
 
-    if (error) throw error
+    const updates: TaskUpdate = { progress };
+    let newStatus = taskToUpdate.status;
 
-    // Auto-update status based on progress
-    let status = data.status
-    if (progress === 0) {
-      status = 'not-started'
-    } else if (progress === 100) {
-      status = 'completed'
-    } else if (status === 'not-started' || status === 'completed') {
-      status = 'in-progress'
+    if (progress <= 0) {
+      newStatus = 'not-started';
+    } else if (progress >= 100) {
+      newStatus = 'completed';
+    } else if (newStatus === 'not-started' || newStatus === 'completed') {
+      newStatus = 'in-progress';
     }
 
-    if (status !== data.status) {
-      return await this.updateTask(id, { status })
+    if (newStatus !== taskToUpdate.status) {
+      updates.status = newStatus;
     }
 
-    return data
+    // 2. Apply the updates in a single operation
+    return this.updateTask(id, projectId, updates);
   }
 
   // Bulk import tasks
-  static async importTasks(tasks: any[]) {
+  static async importTasks(tasks: Partial<TaskInsert>[]): Promise<Task[]> {
     if (!supabase) {
-      // Handle demo mode
-      const results = [];
+      // NOTE: This demo mode implementation is resilient, not atomic.
+      // If one task fails, others will still be imported.
+      const results: Task[] = [];
       for (const task of tasks) {
         try {
-          const result = await this.createTask(task);
-          results.push(result);
+          // This requires project_id to be present on each task object
+          if (task.project_id) {
+            const result = await this.createTask(task);
+            results.push(result);
+          } else {
+             console.warn('Skipping import for task without project_id:', task.name);
+          }
         } catch (error) {
           console.warn('Failed to import task:', task.name, error);
         }
@@ -249,65 +253,55 @@ export class TaskService {
       return results;
     }
 
-    // Prepare tasks for Supabase insertion with proper structure
-    const preparedTasks = tasks.map(task => ({
-      project_id: task.project_id,
-      name: task.name,
+    // Supabase mode is atomic: all tasks are inserted or none are.
+    const preparedTasks: TaskInsert[] = tasks.map(task => ({
+      project_id: task.project_id!,
+      name: task.name || 'Untitled Task',
       description: task.description || null,
-      task_type: task.type || task.task_type || 'task',
+      task_type: task.task_type || 'task',
       status: task.status || 'not-started',
-      start_date: task.start_date || task.startDate,
-      end_date: task.end_date || task.endDate,
-      assignee: task.assignee || null,
+      start_date: task.start_date || new Date().toISOString(),
+      end_date: task.end_date || new Date().toISOString(),
+      assignee: task.assignee || undefined,
       progress: task.progress || 0,
       dependencies: task.dependencies || [],
-      custom_fields: task.custom_fields || task.customFields || {}
+      custom_fields: task.custom_fields || {}
     }));
 
-    const { data, error } = await supabase
-      .from('tasks')
-      .insert(preparedTasks)
-      .select()
+    const { data, error } = await supabase.from('tasks').insert(preparedTasks).select();
 
     if (error) {
       console.error('Error importing tasks:', error);
       throw error;
     }
 
-    // Log bulk import activity
-    if (data.length > 0) {
-      await this.logActivity(data[0].project_id, 'tasks_imported', {
-        count: data.length,
-        task_names: data.map(t => t.name)
-      })
+    if (data && data.length > 0) {
+      await this.logActivity(data[0].project_id, 'tasks_imported', { count: data.length });
     }
-
-    return data
+    return data;
   }
 
   // Get task dependencies
-  static async getTaskDependencies(taskId: string) {
+  static async getTaskDependencies(taskId: string): Promise<Task[]> {
     if (!supabase) {
       // Handle demo mode
       const demoProjects = loadDemoProjects();
-      let task: any = null;
-      
-      for (const project of demoProjects) {
-        if (project.tasks) {
-          task = project.tasks.find((t: any) => t.id === taskId);
-          if (task) break;
+      let task: Task | undefined;
+      let project: any;
+
+      for (const p of demoProjects) {
+        task = p.tasks?.find((t: any) => t.id === taskId);
+        if (task) {
+          project = p;
+          break;
         }
       }
       
-      if (!task || !task.dependencies || task.dependencies.length === 0) {
+      if (!task || !project || !task.dependencies || task.dependencies.length === 0) {
         return [];
       }
       
-      // Find dependent tasks in the same project
-      const project = demoProjects.find(p => p.tasks?.some((t: any) => t.id === taskId));
-      if (!project) return [];
-      
-      return project.tasks.filter((t: any) => task.dependencies.includes(t.id)) || [];
+      return project.tasks.filter((t: any) => task!.dependencies.includes(t.id)) || [];
     }
 
     const { data: task, error } = await supabase
@@ -317,7 +311,6 @@ export class TaskService {
       .single()
 
     if (error) throw error
-
     if (!task.dependencies || !Array.isArray(task.dependencies) || task.dependencies.length === 0) {
       return []
     }
@@ -325,7 +318,6 @@ export class TaskService {
     const { data: dependencies, error: depsError } = await supabase
       .from('tasks')
       .select('*')
-      .eq('project_id', task.project_id)
       .in('id', task.dependencies as string[])
 
     if (depsError) throw depsError
@@ -335,21 +327,19 @@ export class TaskService {
   // Check if task can be started (all dependencies completed)
   static async canStartTask(taskId: string): Promise<boolean> {
     const dependencies = await this.getTaskDependencies(taskId)
-    return dependencies.every(dep => dep.status === 'completed')
+    if (dependencies.length === 0) return true;
+    return dependencies.every(dep => dep.status === 'completed' || dep.status === 'done');
   }
 
   // Subscribe to task changes for a project
   static subscribeToProjectTasks(projectId: string, callback: (payload: any) => void) {
+    if (!supabase) return null; // Can't subscribe in demo mode
+
     return supabase
       .channel(`tasks_${projectId}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'tasks',
-          filter: `project_id=eq.${projectId}`
-        },
+        { event: '*', schema: 'public', table: 'tasks', filter: `project_id=eq.${projectId}` },
         callback
       )
       .subscribe()
