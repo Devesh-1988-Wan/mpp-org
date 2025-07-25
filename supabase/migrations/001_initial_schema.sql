@@ -29,7 +29,7 @@ CREATE TABLE tasks (
   name TEXT NOT NULL,
   description TEXT,
   task_type TEXT CHECK (task_type IN ('task', 'milestone', 'deliverable')) DEFAULT 'task',
-  status TEXT CHECK (status IN ('not-started', 'in-progress', 'completed', 'on-hold')) DEFAULT 'not-started',
+  status TEXT CHECK (status IN ('not-started', 'in-progress', 'completed', 'on-hold',  'impacted', 'dev-in-progress' ,'done')) DEFAULT 'not-started',
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   assignee TEXT,
