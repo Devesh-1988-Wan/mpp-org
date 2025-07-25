@@ -1,5 +1,5 @@
 export type TaskType = 'task' | 'milestone' | 'deliverable';
-export type TaskStatus = 'not-started' | 'in-progress' | 'completed' | 'on-hold';
+export type TaskStatus = 'not-started' | 'in-progress' | 'completed' | 'on-hold'|'impacted'|'on-going'|'dev-in-progress'|'done';
 export type FieldType = 'text' | 'number' | 'date' | 'select' | 'boolean';
 
 export interface CustomField {

@@ -220,6 +220,10 @@ export const TaskForm: React.FC<TaskFormProps> = ({
                 <SelectItem value="in-progress">In Progress</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="on-hold">On Hold</SelectItem>
+                <SelectItem value="impacted">Impacted</SelectItem>
+                <SelectItem value="on-going">On Going</SelectItem>
+                <SelectItem value="dev-in-progress">Dev In Progress</SelectItem>
+                <SelectItem value="done">Done</SelectItem>
               </SelectContent>
             </Select>
           </div>
