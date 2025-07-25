@@ -180,9 +180,14 @@ WITH CHECK (
 );
 
 -- Create triggers for updated_at timestamps
+-- First, drop the old trigger if it exists
+DROP TRIGGER IF EXISTS update_projects_updated_at ON public.projects;
+-- Now, create the new trigger with a conditional clause
 CREATE TRIGGER update_projects_updated_at
   BEFORE UPDATE ON public.projects
-  FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+  FOR EACH ROW
+  WHEN (OLD.project_name IS DISTINCT FROM NEW.name)
+  EXECUTE FUNCTION public.update_updated_at_column();
 
 CREATE TRIGGER update_tasks_updated_at
   BEFORE UPDATE ON public.tasks

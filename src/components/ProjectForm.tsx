@@ -41,13 +41,21 @@ export function ProjectForm({ onSave, onCancel, editProject }: ProjectFormProps)
       return;
     }
 
+    let finalDueDate: Date | undefined = undefined;
+    if (dueDate) {
+      // Create a date object from the 'YYYY-MM-DD' string. This defaults to UTC midnight.
+      const date = new Date(dueDate);
+      // Adjust for the user's timezone offset to ensure the date represents midnight in their local timezone,
+      // preventing off-by-one-day errors when the data is processed by the server.
+      const userTimezoneOffset = date.getTimezoneOffset() * 60000;
+      finalDueDate = new Date(date.getTime() + userTimezoneOffset);
+    }
+
     const projectData: Omit<Project, 'id' | 'created_date' | 'last_modified' | 'created_by'> = {
       name: name.trim(),
       description: description.trim(),
       status,
-      // If a due date is set, convert the string back to a Date object.
-      // The input value 'YYYY-MM-DD' is parsed in the local timezone.
-      due_date: dueDate ? new Date(dueDate) : undefined,
+      due_date: finalDueDate,
       tasks: editProject?.tasks || [],
       customFields: editProject?.customFields || [],
       team_members: teamMembers.filter(member => member.trim().length > 0)
