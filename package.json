@@ -1,12 +1,12 @@
 {
   "name": "my-node-app",
   "version": "1.0.0",
-  "main": "dist/index.js", // Point main to the built file
+  "main": "dist/index.js",
   "scripts": {
     "clean": "rimraf dist",
     "build": "npm run clean && tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts" // Example dev script
+    "dev": "ts-node src/index.ts"
   },
   "devDependencies": {
     "rimraf": "^5.0.0",
