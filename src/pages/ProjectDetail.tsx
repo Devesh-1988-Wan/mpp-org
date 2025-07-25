@@ -72,14 +72,15 @@ const ProjectDetail = () => {
   };
 
   const projectStats = useMemo(() => {
-    if (!project) return { total: 0, completed: 0, inProgress: 0, milestones: 0 };
+    if (!project) return { total: 0, completed: 0, inProgress: 0, impacted: 0 ,milestones: 0 };
     
     const total = project.tasks.length;
     const completed = project.tasks.filter(task => task.status === 'completed').length;
     const inProgress = project.tasks.filter(task => task.status === 'in-progress').length;
+    const impacted = project.tasks.filter(task => task.task_type === 'impacted').length;
     const milestones = project.tasks.filter(task => task.task_type === 'milestone').length;
     
-    return { total, completed, inProgress, milestones };
+    return { total, completed, inProgress,impacted, milestones };
   }, [project]);
 
   if (loading) {
@@ -403,6 +404,10 @@ const ProjectDetail = () => {
           <Card className="p-4">
             <div className="text-2xl font-bold text-warning">{projectStats.inProgress}</div>
             <div className="text-sm text-muted-foreground">In Progress</div>
+          </Card>
+          <Card className="p-4">
+            <div className="text-2xl font-bold text-warning">{projectStats.impacted}</div>
+            <div className="text-sm text-muted-foreground">Impacted</div>
           </Card>
           <Card className="p-4">
             <div className="text-2xl font-bold text-milestone">{projectStats.milestones}</div>
