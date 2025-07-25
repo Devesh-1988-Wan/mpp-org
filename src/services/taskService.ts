@@ -8,7 +8,7 @@ type Task = {
   name: string
   description?: string
   task_type: 'task' | 'milestone' | 'deliverable'
-  status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
+  status: 'not-started' | 'in-progress' | 'completed' | 'on-hold' | 'impacted' | 'on-going' | 'dev-in-progress' | 'done'
   start_date: string
   end_date: string
   assignee?: string
