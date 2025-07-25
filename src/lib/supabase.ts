@@ -100,7 +100,7 @@ export type Database = {
           name: string
           description: string | null
           task_type: 'task' | 'milestone' | 'deliverable'
-          status: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
+          status: 'not-started' | 'in-progress' | 'completed' | 'on-hold' | 'impacted' | 'dev-in-progress' | 'done'
           start_date: string
           end_date: string
           assignee: string | null
@@ -116,7 +116,7 @@ export type Database = {
           name: string
           description?: string | null
           task_type?: 'task' | 'milestone' | 'deliverable'
-          status?: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
+          status?: 'not-started' | 'in-progress' | 'completed' | 'on-hold' | 'impacted' | 'dev-in-progress' | 'done'
           start_date: string
           end_date: string
           assignee?: string | null
@@ -132,7 +132,7 @@ export type Database = {
           name?: string
           description?: string | null
           task_type?: 'task' | 'milestone' | 'deliverable'
-          status?: 'not-started' | 'in-progress' | 'completed' | 'on-hold'
+          status?: 'not-started' | 'in-progress' | 'completed' | 'on-hold'  | 'impacted' | 'dev-in-progress' | 'done'
           start_date?: string
           end_date?: string
           assignee?: string | null
