@@ -6,8 +6,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Save, X, Plus, Trash2 } from "lucide-react";
+import { Save, X, Plus, Trash2, Calendar } from "lucide-react";
 import { Project } from "@/types/project";
+
+// Helper function to format date for input[type="date"]
+const formatDateForInput = (date: Date | undefined): string => {
+  if (!date) return '';
+  // Ensures the date is treated as local time, not UTC, to prevent off-by-one day errors.
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 interface ProjectFormProps {
   onSave: (project: Omit<Project, 'id' | 'created_date' | 'last_modified' | 'created_by'>) => void;
@@ -19,6 +29,7 @@ export function ProjectForm({ onSave, onCancel, editProject }: ProjectFormProps)
   const [name, setName] = useState(editProject?.name || '');
   const [description, setDescription] = useState(editProject?.description || '');
   const [status, setStatus] = useState<Project['status']>(editProject?.status || 'active');
+  const [dueDate, setDueDate] = useState<string>(formatDateForInput(editProject?.due_date));
   const [teamMembers, setTeamMembers] = useState<string[]>(editProject?.team_members || []);
   const [newMember, setNewMember] = useState('');
 
@@ -26,6 +37,7 @@ export function ProjectForm({ onSave, onCancel, editProject }: ProjectFormProps)
     e.preventDefault();
     
     if (!name.trim()) {
+      // You might want to add user feedback here, e.g., a toast notification
       return;
     }
 
@@ -33,6 +45,9 @@ export function ProjectForm({ onSave, onCancel, editProject }: ProjectFormProps)
       name: name.trim(),
       description: description.trim(),
       status,
+      // If a due date is set, convert the string back to a Date object.
+      // The input value 'YYYY-MM-DD' is parsed in the local timezone.
+      due_date: dueDate ? new Date(dueDate) : undefined,
       tasks: editProject?.tasks || [],
       customFields: editProject?.customFields || [],
       team_members: teamMembers.filter(member => member.trim().length > 0)
@@ -60,7 +75,7 @@ export function ProjectForm({ onSave, onCancel, editProject }: ProjectFormProps)
   };
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
+    <Card className="w-full max-w-2xl mx-auto my-8">
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>{editProject ? 'Edit Project' : 'Create New Project'}</CardTitle>
@@ -95,18 +110,30 @@ export function ProjectForm({ onSave, onCancel, editProject }: ProjectFormProps)
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="status">Status</Label>
-              <Select value={status} onValueChange={(value: Project['status']) => setStatus(value)}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="active">Active</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="archived">Archived</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <Label htmlFor="status">Status</Label>
+                    <Select value={status} onValueChange={(value: Project['status']) => setStatus(value)}>
+                        <SelectTrigger>
+                        <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="archived">Archived</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <div className="space-y-2">
+                    <Label htmlFor="due-date">Due Date</Label>
+                    <Input
+                        id="due-date"
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                    />
+                </div>
             </div>
           </div>
 
@@ -119,20 +146,21 @@ export function ProjectForm({ onSave, onCancel, editProject }: ProjectFormProps)
                 value={newMember}
                 onChange={(e) => setNewMember(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Add team member name"
+                placeholder="Add team member by name or email"
               />
               <Button 
                 type="button" 
                 variant="outline" 
                 onClick={handleAddTeamMember}
                 disabled={!newMember.trim()}
+                aria-label="Add team member"
               >
                 <Plus className="w-4 h-4" />
               </Button>
             </div>
 
             {teamMembers.length > 0 && (
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 pt-2">
                 {teamMembers.map((member, index) => (
                   <Badge 
                     key={index} 
@@ -144,6 +172,7 @@ export function ProjectForm({ onSave, onCancel, editProject }: ProjectFormProps)
                       type="button"
                       onClick={() => handleRemoveTeamMember(member)}
                       className="text-muted-foreground hover:text-destructive"
+                      aria-label={`Remove ${member}`}
                     >
                       <Trash2 className="w-3 h-3" />
                     </button>
@@ -154,13 +183,13 @@ export function ProjectForm({ onSave, onCancel, editProject }: ProjectFormProps)
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end space-x-2 pt-4">
+          <div className="flex justify-end space-x-2 pt-4 border-t">
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
             <Button type="submit">
               <Save className="w-4 h-4 mr-2" />
-              {editProject ? 'Update' : 'Create'} Project
+              {editProject ? 'Update Project' : 'Create Project'}
             </Button>
           </div>
         </form>
