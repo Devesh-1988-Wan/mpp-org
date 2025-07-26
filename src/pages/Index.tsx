@@ -8,7 +8,7 @@ import { UserMenu } from "@/components/auth/UserMenu";
 
 const Index = () => {
   const navigate = useNavigate();
-  const { user, loading } = useAuth(); // Destructure the loading state
+  const { user, loading } from useAuth(); // Destructure the loading state
 
   // Add this block to handle the loading state
   if (loading) {
