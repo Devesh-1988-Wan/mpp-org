@@ -4,27 +4,12 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-// Fallback check to prevent initialization with invalid values
-console.log('Supabase Configuration Check:');
-console.log('VITE_SUPABASE_URL:', supabaseUrl);
-console.log('VITE_SUPABASE_ANON_KEY exists:', !!supabaseAnonKey);
-console.log('URL is placeholder:', supabaseUrl === 'YOUR_SUPABASE_URL');
-
-if (!supabaseUrl || !supabaseAnonKey || supabaseUrl === 'YOUR_SUPABASE_URL') {
-  console.warn('❌ Supabase credentials not configured. Some features will be disabled.');
-  console.log('Missing:', {
-    url: !supabaseUrl,
-    key: !supabaseAnonKey,
-    placeholder: supabaseUrl === 'YOUR_SUPABASE_URL'
-  });
-} else {
-  console.log('✅ Supabase credentials configured successfully');
+// This will now throw an error if the credentials are not set
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Supabase URL and anonymous key are required.');
 }
 
-// Only create client if we have valid credentials
-export const supabase = (supabaseUrl && supabaseAnonKey && supabaseUrl !== 'YOUR_SUPABASE_URL') 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export type Database = {
   public: {
