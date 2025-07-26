@@ -293,3 +293,12 @@ export class ProjectService {
       .subscribe();
   }
 }
+
+export const adaptTaskForLegacyComponents = (task: Task) => {
+    return {
+        ...task,
+        startDate: new Date(task.start_date),
+        endDate: new Date(task.end_date),
+        type: task.task_type
+    };
+};
