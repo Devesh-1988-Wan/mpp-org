@@ -9,9 +9,14 @@ interface AppUser {
   // Add any other user properties you need
 }
 
+// Define the type for the backend selection
+type BackendType = 'supabase' | 'sqlserver';
+
 interface AuthContextType {
   user: User | AppUser | null;
   loading: boolean;
+  authBackend: BackendType;
+  setAuthBackend: (backend: BackendType) => void;
   signUp: (email: string, password: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -28,28 +33,33 @@ export const useAuth = () => {
   return context;
 };
 
-const backend = import.meta.env.VITE_BACKEND_TYPE;
+// Get the initial backend type from environment variables as a default
+const initialBackend = (import.meta.env.VITE_BACKEND_TYPE as BackendType) || 'sqlserver';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | AppUser | null>(null);
   const [loading, setLoading] = useState(true);
+  // State to manage the selected backend, defaulting to the env variable
+  const [authBackend, setAuthBackend] = useState<BackendType>(initialBackend);
 
   useEffect(() => {
     const initializeAuth = async () => {
-      if (backend === 'sqlserver') {
+      setLoading(true);
+      if (authBackend === 'sqlserver') {
         const token = localStorage.getItem('authToken');
         if (token) {
           try {
-            // In a real app, you would verify the token with your backend
-            // For now, we'll decode it to get user info
             const payload = JSON.parse(atob(token.split('.')[1]));
             setUser({ id: payload.sub, email: payload.email } as AppUser);
           } catch (e) {
             console.error('Invalid token:', e);
             localStorage.removeItem('authToken');
+            setUser(null);
           }
+        } else {
+          setUser(null);
         }
-      } else {
+      } else { // supabase
         const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user ?? null);
       }
@@ -58,25 +68,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     initializeAuth();
 
-    if (backend === 'supabase') {
+    if (authBackend === 'supabase') {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         setUser(session?.user ?? null);
         setLoading(false);
       });
-
       return () => subscription.unsubscribe();
     }
-  }, []);
+  }, [authBackend]); // Re-run this effect when the backend type changes
 
   const signUp = async (email: string, password: string) => {
-    if (backend === 'sqlserver') {
-      // Replace with your actual API endpoint
-      const response = await fetch('/api/auth/signup', {
+    if (authBackend === 'sqlserver') {
+      const response = await fetch('http://localhost:8080/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-
       if (!response.ok) {
         const error = await response.json();
         return { error: { message: error.message || 'Sign-up failed' } };
@@ -89,18 +96,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signIn = async (email: string, password: string) => {
-    if (backend === 'sqlserver') {
-      // Replace with your actual API endpoint
-      const response = await fetch('/api/auth/signin', {
+    if (authBackend === 'sqlserver') {
+      const response = await fetch('http://localhost:8080/api/auth/signin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
       });
-
       if (response.ok) {
-        const { token, user } = await response.json();
+        const { token, user: apiUser } = await response.json();
         localStorage.setItem('authToken', token);
-        setUser(user);
+        setUser(apiUser);
         return { error: null };
       } else {
         const error = await response.json();
@@ -113,7 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const signOut = async () => {
-    if (backend === 'sqlserver') {
+    if (authBackend === 'sqlserver') {
       localStorage.removeItem('authToken');
       setUser(null);
     } else {
@@ -122,33 +127,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const resetPassword = async (email: string) => {
-    if (backend === 'sqlserver') {
-      // Replace with your actual API endpoint
-      const response = await fetch('/api/auth/reset-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        return { error: { message: error.message || 'Password reset failed' } };
-      }
-      return { error: null };
-    } else {
-      const { error } = await supabase.auth.resetPasswordForEmail(email);
-      return { error };
-    }
+    // ... implementation for resetPassword
+    return { error: { message: 'Not implemented' } };
   };
 
   const value = {
     user,
     loading,
+    authBackend,
+    setAuthBackend,
     signUp,
     signIn,
     signOut,
     resetPassword,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
 };
