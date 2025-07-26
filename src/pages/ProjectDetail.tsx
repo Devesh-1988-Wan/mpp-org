@@ -143,16 +143,16 @@ const ProjectDetail = () => {
           project_id: project.id,
           name: createdTask.name,
           description: createdTask.description || '',
-          task_type: (createdTask as any).task_type || 'task',
-          status: (createdTask as any).status || 'not-started',
-          start_date: (createdTask as any).start_date || new Date().toISOString().split('T')[0],
-          end_date: (createdTask as any).end_date || new Date().toISOString().split('T')[0],
-          assignee: (createdTask as any).assignee || '',
-          progress: (createdTask as any).progress || 0,
-          dependencies: Array.isArray((createdTask as any).dependencies) ? (createdTask as any).dependencies : [],
-          custom_fields: (createdTask as any).custom_fields || {},
-          created_at: (createdTask as any).created_at || new Date().toISOString(),
-          updated_at: (createdTask as any).updated_at || new Date().toISOString()
+          task_type: createdTask.task_type || 'task',
+          status: createdTask.status || 'not-started',
+          start_date: createdTask.start_date || new Date().toISOString().split('T')[0],
+          end_date: createdTask.end_date || new Date().toISOString().split('T')[0],
+          assignee: createdTask.assignee || '',
+          progress: createdTask.progress || 0,
+          dependencies: Array.isArray(createdTask.dependencies) ? createdTask.dependencies : [],
+          custom_fields: createdTask.custom_fields || {},
+          created_at: createdTask.created_at || new Date().toISOString(),
+          updated_at: createdTask.updated_at || new Date().toISOString()
         };
         
         const updatedProject = { 

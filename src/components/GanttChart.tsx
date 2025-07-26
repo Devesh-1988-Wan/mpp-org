@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { format, differenceInDays, startOfWeek, endOfWeek, eachDayOfInterval, addDays, isSameDay } from "date-fns";
-import { Task } from "@/types/project";
+import { Task, CustomField } from "@/types/project";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Edit2, Trash2 } from "lucide-react";
@@ -8,11 +8,12 @@ import { adaptTaskForLegacyComponents } from "@/utils/typeCompatibility";
 
 interface GanttChartProps {
   tasks: Task[];
+  customFields: CustomField[];
   onEditTask: (task: Task) => void;
   onDeleteTask: (taskId: string) => void;
 }
 
-export function GanttChart({ tasks, onEditTask, onDeleteTask }: GanttChartProps) {
+export function GanttChart({ tasks, customFields, onEditTask, onDeleteTask }: GanttChartProps) {
   // Convert tasks to legacy format for compatibility
   const adaptedTasks = tasks.map(adaptTaskForLegacyComponents);
   
@@ -78,6 +79,25 @@ export function GanttChart({ tasks, onEditTask, onDeleteTask }: GanttChartProps)
 
   const isToday = (date: Date) => isSameDay(date, new Date());
 
+  const renderCustomFields = (task: Task) => {
+    if (!task.custom_fields || !customFields) return null;
+
+    return (
+      <div className="flex flex-wrap gap-2 mt-1">
+        {customFields.map(field => {
+          const value = task.custom_fields[field.id];
+          if (value === undefined || value === null) return null;
+
+          return (
+            <Badge key={field.id} variant="secondary" className="text-xs font-normal">
+              {field.name}: {String(value)}
+            </Badge>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="bg-card rounded-lg border overflow-hidden">
       <div className="p-4 border-b bg-muted/30">
@@ -129,6 +149,7 @@ export function GanttChart({ tasks, onEditTask, onDeleteTask }: GanttChartProps)
                   <div className="text-xs text-muted-foreground mt-1">
                     {format(task.startDate, 'MMM dd')} - {format(task.endDate, 'MMM dd')}
                   </div>
+                  {renderCustomFields(task)}
                 </div>
                 <div className="flex space-x-1">
                   <Button 

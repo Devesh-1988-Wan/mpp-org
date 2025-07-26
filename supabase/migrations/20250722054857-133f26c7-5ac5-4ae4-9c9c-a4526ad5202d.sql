@@ -29,9 +29,7 @@ CREATE TABLE public.tasks (
   status TEXT CHECK (status IN ('not-started', 'in-progress', 'completed', 'on-hold')) DEFAULT 'not-started',
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
-  -- CORRECTED: Changed `assignee` from TEXT to UUID with a foreign key.
-  -- This enforces data integrity and allows for proper joins with the users table.
-  assignee UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  assignee TEXT,
   progress INTEGER DEFAULT 0 CHECK (progress >= 0 AND progress <= 100),
   dependencies JSONB DEFAULT '[]'::jsonb,
   -- NOTE: The name `custom_fields` can be ambiguous. `custom_field_values` might be clearer.
