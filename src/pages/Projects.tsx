@@ -75,10 +75,11 @@ const Projects = () => {
       if (editingProject) {
         // Update existing project
         await ProjectService.updateProject(editingProject.id, {
+          ...editingProject,
           name: projectData.name,
           description: projectData.description,
           status: projectData.status,
-          team_members: projectData.team_members
+          team_members: projectData.team_members,
         });
         toast({
           title: "Project Updated",
