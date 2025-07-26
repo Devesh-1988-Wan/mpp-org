@@ -1,4 +1,4 @@
-import { supabase } from '@/integrations/supabase/client'
+import { supabase } from '@/lib/supabase'
 import { generateId } from '@/utils/idGenerator'
 
 // Define types manually until the auto-generated types are updated
