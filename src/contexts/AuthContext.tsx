@@ -2,8 +2,15 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
+// A generic user type for your SQL Server authentication
+interface AppUser {
+  id: string;
+  email: string;
+  // Add any other user properties you need
+}
+
 interface AuthContextType {
-  user: User | null;
+  user: User | AppUser | null;
   loading: boolean;
   signUp: (email: string, password: string) => Promise<{ error: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
@@ -21,84 +28,117 @@ export const useAuth = () => {
   return context;
 };
 
+const backend = import.meta.env.VITE_BACKEND_TYPE;
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<User | AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize authentication state
     const initializeAuth = async () => {
-      try {
-        // Get initial session with faster response
-        const { data: { session }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.warn('Error getting session:', error.message);
+      if (backend === 'sqlserver') {
+        const token = localStorage.getItem('authToken');
+        if (token) {
+          try {
+            // In a real app, you would verify the token with your backend
+            // For now, we'll decode it to get user info
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            setUser({ id: payload.sub, email: payload.email } as AppUser);
+          } catch (e) {
+            console.error('Invalid token:', e);
+            localStorage.removeItem('authToken');
+          }
         }
-        
+      } else {
+        const { data: { session } } = await supabase.auth.getSession();
         setUser(session?.user ?? null);
-        setLoading(false);
-      } catch (error) {
-        console.error('Auth initialization error:', error);
-        setUser(null);
-        setLoading(false);
       }
+      setLoading(false);
     };
 
-    // Initialize auth immediately
     initializeAuth();
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, session?.user?.email);
-      
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+    if (backend === 'supabase') {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
         setUser(session?.user ?? null);
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-      } else {
-        setUser(session?.user ?? null);
-      }
-      
-      setLoading(false);
-    });
+        setLoading(false);
+      });
 
-    return () => subscription.unsubscribe();
+      return () => subscription.unsubscribe();
+    }
   }, []);
 
   const signUp = async (email: string, password: string) => {
-    const redirectUrl = `${window.location.origin}/`;
-    
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: redirectUrl
+    if (backend === 'sqlserver') {
+      // Replace with your actual API endpoint
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return { error: { message: error.message || 'Sign-up failed' } };
       }
-    });
-    
-    return { error };
+      return { error: null };
+    } else {
+      const { error } = await supabase.auth.signUp({ email, password });
+      return { error };
+    }
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    
-    return { error };
+    if (backend === 'sqlserver') {
+      // Replace with your actual API endpoint
+      const response = await fetch('/api/auth/signin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (response.ok) {
+        const { token, user } = await response.json();
+        localStorage.setItem('authToken', token);
+        setUser(user);
+        return { error: null };
+      } else {
+        const error = await response.json();
+        return { error: { message: error.message || 'Sign-in failed' } };
+      }
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      return { error };
+    }
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    if (backend === 'sqlserver') {
+      localStorage.removeItem('authToken');
+      setUser(null);
+    } else {
+      await supabase.auth.signOut();
+    }
   };
 
   const resetPassword = async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    
-    return { error };
+    if (backend === 'sqlserver') {
+      // Replace with your actual API endpoint
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        return { error: { message: error.message || 'Password reset failed' } };
+      }
+      return { error: null };
+    } else {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      return { error };
+    }
   };
 
   const value = {
