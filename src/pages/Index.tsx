@@ -1,16 +1,15 @@
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderOpen, Plus, BarChart3, Users, Loader2 } from "lucide-react"; // Import Loader2
+import { FolderOpen, Plus, BarChart3, Users, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { AuthForms } from "@/components/auth/AuthForms";
 import { UserMenu } from "@/components/auth/UserMenu";
 
 const Index = () => {
   const navigate = useNavigate();
-  const { user, loading } from useAuth(); // Destructure the loading state
+  const { user, loading } = useAuth();
 
-  // Add this block to handle the loading state
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
