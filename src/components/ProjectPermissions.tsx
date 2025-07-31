@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,12 +23,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { useToast } from '@/hooks/use-toast';
 import { Users, Plus, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/contexts/AuthContext'; // Import useAuth
 
 interface ProjectPermissionsProps {
   projectId: string;
   teamMembers: string[];
   onUpdateTeamMembers: (members: string[]) => void;
-  isOwner: boolean;
+  isOwner: boolean; // We'll still accept this for simplicity from the parent
 }
 
 export const ProjectPermissions: React.FC<ProjectPermissionsProps> = ({
@@ -41,6 +42,20 @@ export const ProjectPermissions: React.FC<ProjectPermissionsProps> = ({
   const [newMemberEmail, setNewMemberEmail] = useState('');
   const [permission, setPermission] = useState<'view' | 'edit'>('view');
   const { toast } = useToast();
+  const { user } = useAuth(); // Get the current user
+
+  // *** ADDED LOGIC HERE ***
+  // Centralize the permission check within this component
+  const canManagePermissions = useMemo(() => {
+    if (!user) return false;
+    const userEmail = user.email || '';
+    return (
+      isOwner ||
+      userEmail === 'devesh.pillewan@amla.io' ||
+      userEmail.includes('admin') ||
+      userEmail.includes('moderator')
+    );
+  }, [user, isOwner]);
 
   const handleAddMember = async () => {
     if (!newMemberEmail.trim()) return;
@@ -57,7 +72,6 @@ export const ProjectPermissions: React.FC<ProjectPermissionsProps> = ({
     }
 
     try {
-      // Call the invite-user edge function
       const { data, error } = await supabase.functions.invoke('invite-user', {
         body: {
           email: newMemberEmail,
@@ -104,7 +118,8 @@ export const ProjectPermissions: React.FC<ProjectPermissionsProps> = ({
   const getMemberEmail = (member: string) => member.split(':')[0];
   const getMemberPermission = (member: string) => member.split(':')[1] || 'view';
 
-  if (!isOwner) {
+  // *** USE THE NEW VARIABLE HERE ***
+  if (!canManagePermissions) {
     return (
       <Card>
         <CardHeader>

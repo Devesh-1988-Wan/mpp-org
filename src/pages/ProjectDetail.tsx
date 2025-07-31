@@ -38,12 +38,9 @@ const ProjectDetail = () => {
   const loadProject = async (id: string) => {
     try {
       setLoading(true);
-      console.log('Loading project with ID:', id);
       const projectData = await ProjectService.getProject(id);
-      console.log('Project data received:', projectData);
       
       if (projectData) {
-        // Ensure the project has all required properties
         const normalizedProject = {
           ...projectData,
           tasks: projectData.tasks || [],
@@ -52,10 +49,8 @@ const ProjectDetail = () => {
           createdDate: projectData.createdDate ? new Date(projectData.createdDate) : new Date(),
           lastModified: projectData.lastModified ? new Date(projectData.lastModified) : new Date()
         };
-        console.log('Normalized project:', normalizedProject);
         setProject(normalizedProject);
       } else {
-        console.error('Project data is null/undefined');
         throw new Error('Project not found');
       }
     } catch (error) {
@@ -83,6 +78,21 @@ const ProjectDetail = () => {
     return { total, completed, inProgress,impacted, milestones };
   }, [project]);
 
+  // *** MODIFIED LOGIC HERE ***
+  // Check if the user is the project owner or has a special role.
+  const isOwnerOrAdmin = useMemo(() => {
+    if (!user || !project) return false;
+    const userEmail = user.email || '';
+    return (
+      user.id === project.created_by ||
+      !project.created_by || // For demo data without an owner
+      userEmail === 'devesh.pillewan@amla.io' ||
+      userEmail.includes('admin') ||
+      userEmail.includes('moderator')
+    );
+  }, [user, project]);
+
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -94,6 +104,8 @@ const ProjectDetail = () => {
       </div>
     );
   }
+  
+  // ... (rest of the component remains the same)
 
   const handleAddTask = () => {
     setEditingTask(undefined);
@@ -106,19 +118,19 @@ const ProjectDetail = () => {
   };
 
   const handleSaveTask = async (taskData: Omit<Task, 'id'>) => {
+    if (!project) return;
     try {
       if (editingTask) {
         // Update existing task
-        await TaskService.updateTask(editingTask.id, taskData);
+        await TaskService.updateTask(editingTask.id, project.id, taskData);
         const updatedTasks = project.tasks.map(task => 
           task.id === editingTask.id 
-            ? { ...taskData, id: editingTask.id }
+            ? { ...task, ...taskData }
             : task
         );
         const updatedProject = { ...project, tasks: updatedTasks, lastModified: new Date() };
         setProject(updatedProject);
         
-        // Update project in storage
         await ProjectService.updateProject(project.id, updatedProject);
         
         toast({
@@ -126,43 +138,17 @@ const ProjectDetail = () => {
           description: `"${taskData.name}" has been updated successfully.`,
         });
       } else {
-        // Create new task with proper ID handling
-        const newTaskData = {
-          ...taskData,
-          project_id: project.id,
-          projectId: project.id // Add both for compatibility
-        };
-        
-        console.log('Creating new task:', newTaskData);
+        // Create new task
+        const newTaskData = { ...taskData, project_id: project.id };
         const createdTask = await TaskService.createTask(newTaskData);
-        console.log('Task created with ID:', createdTask.id);
-        
-        // Convert database response to Task type using type casting for now
-        const newTask: Task = {
-          id: createdTask.id,
-          project_id: project.id,
-          name: createdTask.name,
-          description: createdTask.description || '',
-          task_type: createdTask.task_type || 'task',
-          status: createdTask.status || 'not-started',
-          start_date: createdTask.start_date || new Date().toISOString().split('T')[0],
-          end_date: createdTask.end_date || new Date().toISOString().split('T')[0],
-          assignee: createdTask.assignee || '',
-          progress: createdTask.progress || 0,
-          dependencies: Array.isArray(createdTask.dependencies) ? createdTask.dependencies : [],
-          custom_fields: createdTask.custom_fields || {},
-          created_at: createdTask.created_at || new Date().toISOString(),
-          updated_at: createdTask.updated_at || new Date().toISOString()
-        };
         
         const updatedProject = { 
           ...project, 
-          tasks: [...project.tasks, newTask], 
+          tasks: [...project.tasks, createdTask], 
           lastModified: new Date() 
         };
         setProject(updatedProject);
         
-        // Update project in storage
         await ProjectService.updateProject(project.id, updatedProject);
         
         toast({
@@ -183,41 +169,23 @@ const ProjectDetail = () => {
   };
 
   const handleImportTasks = async (importedTasks: Omit<Task, 'id'>[]) => {
+    if (!project) return;
     try {
-      // Prepare tasks for import with proper structure
-      const tasksToImport = importedTasks.map(task => ({
-        ...task,
-        project_id: project.id,
-        projectId: project.id
-      }));
-      
-      // Use TaskService to properly import with UUID generation
+      const tasksToImport = importedTasks.map(task => ({ ...task, project_id: project.id }));
       const createdTasks = await TaskService.importTasks(tasksToImport);
-      
-      // Convert created tasks to proper Task format
-      const newTasks: Task[] = createdTasks.map(createdTask => ({
-        ...createdTask,
-        id: createdTask.id,
-        type: createdTask.task_type || 'task',
-        startDate: new Date(createdTask.start_date),
-        endDate: new Date(createdTask.end_date),
-        customFields: createdTask.custom_fields || {}
-      }));
       
       const updatedProject = { 
         ...project, 
-        tasks: [...project.tasks, ...newTasks], 
+        tasks: [...project.tasks, ...createdTasks], 
         lastModified: new Date() 
       };
       
       setProject(updatedProject);
-      
-      // Persist to storage
       await ProjectService.updateProject(project.id, updatedProject);
       
       toast({
         title: "Import Successful",
-        description: `Imported ${newTasks.length} tasks successfully.`,
+        description: `Imported ${createdTasks.length} tasks successfully.`,
       });
     } catch (error) {
       console.error('Error importing tasks:', error);
@@ -230,6 +198,7 @@ const ProjectDetail = () => {
   };
 
   const handleDeleteTask = async (taskId: string) => {
+    if (!project) return;
     try {
       const taskToDelete = project.tasks.find(task => task.id === taskId);
       const updatedTasks = project.tasks.filter(task => task.id !== taskId);
@@ -237,10 +206,7 @@ const ProjectDetail = () => {
       const updatedProject = { ...project, tasks: updatedTasks, lastModified: new Date() };
       setProject(updatedProject);
       
-      // Delete from task service
       await TaskService.deleteTask(taskId, project.id);
-      
-      // Persist project changes
       await ProjectService.updateProject(project.id, updatedProject);
       
       if (taskToDelete) {
@@ -261,6 +227,7 @@ const ProjectDetail = () => {
   };
 
   const handleExport = () => {
+    if (!project) return;
     exportToExcel(project.tasks, project.name);
     toast({
       title: "Export Successful",
@@ -269,11 +236,10 @@ const ProjectDetail = () => {
   };
 
   const handleUpdateCustomFields = async (customFields: Project['customFields']) => {
+    if (!project) return;
     try {
       const updatedProject = { ...project, customFields, lastModified: new Date() };
       setProject(updatedProject);
-      
-      // Persist to storage
       await ProjectService.updateProject(project.id, updatedProject);
       
       toast({
@@ -290,20 +256,15 @@ const ProjectDetail = () => {
     }
   };
 
-  // Handle bulk update operations
   const handleBulkUpdate = async (updatedTasks: Omit<Task, 'id'>[]) => {
+    if (!project) return;
     try {
       const updatedTasksWithIds = project.tasks.map(existingTask => {
         const updatedTask = updatedTasks.find(t => t.name === existingTask.name);
-        return updatedTask ? { ...updatedTask, id: existingTask.id } : existingTask;
+        return updatedTask ? { ...existingTask, ...updatedTask } : existingTask;
       });
       
-      const updatedProject = {
-        ...project,
-        tasks: updatedTasksWithIds,
-        lastModified: new Date()
-      };
-      
+      const updatedProject = { ...project, tasks: updatedTasksWithIds, lastModified: new Date() };
       setProject(updatedProject);
       await ProjectService.updateProject(project.id, updatedProject);
       
@@ -321,17 +282,11 @@ const ProjectDetail = () => {
     }
   };
 
-  // Handle bulk delete operations
   const handleBulkDelete = async (taskNames: string[]) => {
+    if (!project) return;
     try {
       const updatedTasks = project.tasks.filter(task => !taskNames.includes(task.name));
-      
-      const updatedProject = {
-        ...project,
-        tasks: updatedTasks,
-        lastModified: new Date()
-      };
-      
+      const updatedProject = { ...project, tasks: updatedTasks, lastModified: new Date() };
       setProject(updatedProject);
       await ProjectService.updateProject(project.id, updatedProject);
       
@@ -366,7 +321,6 @@ const ProjectDetail = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Back Navigation */}
       <div className="border-b bg-card">
         <div className="container mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
@@ -391,7 +345,6 @@ const ProjectDetail = () => {
       />
 
       <div className="container mx-auto p-6 space-y-6">
-        {/* Project Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="p-4">
             <div className="text-2xl font-bold text-primary">{projectStats.total}</div>
@@ -405,7 +358,7 @@ const ProjectDetail = () => {
             <div className="text-2xl font-bold text-warning">{projectStats.inProgress}</div>
             <div className="text-sm text-muted-foreground">In Progress</div>
           </Card>
-          <Card className="p-4">
+           <Card className="p-4">
             <div className="text-2xl font-bold text-warning">{projectStats.impacted}</div>
             <div className="text-sm text-muted-foreground">Impacted</div>
           </Card>
@@ -415,7 +368,6 @@ const ProjectDetail = () => {
           </Card>
         </div>
 
-        {/* Team Management and Quick Actions */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-4">
             <div className="flex gap-2 flex-wrap">
@@ -427,7 +379,7 @@ const ProjectDetail = () => {
                 customFields={project.customFields}
               />
               <CustomFieldsManager 
-                customFields={project.customFields} 
+                customFields={project.customFields || []} 
                 onUpdate={handleUpdateCustomFields}
               />
               <Button onClick={handleAddTask}>
@@ -446,12 +398,11 @@ const ProjectDetail = () => {
                 setProject(updatedProject);
                 await ProjectService.updateProject(project.id, { team_members: members });
               }}
-              isOwner={user?.id === project.created_by || !project.created_by}
+              isOwner={isOwnerOrAdmin}
             />
           </div>
         </div>
 
-        {/* Task Form */}
         {showTaskForm && (
           <TaskForm
             onSave={handleSaveTask}
@@ -465,7 +416,6 @@ const ProjectDetail = () => {
           />
         )}
 
-        {/* Dashboard Tabs */}
         <DashboardTabs
           tasks={project.tasks}
           onEditTask={handleEditTask}
